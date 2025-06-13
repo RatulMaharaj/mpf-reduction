@@ -8,6 +8,17 @@ from src.config import (
     runs_of_interest,
 )
 from src.process import process_rpt_file
+import logging
+
+# Set up logging
+logging.basicConfig(
+    filename="folder_analysis.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logging.info("Starting folder analysis")
 
 # create an output dir
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -23,6 +34,7 @@ for run in runs_of_interest:
     for run_number in run_numbers:
         results_dir = input_dir / f"#288.{run}" / f"RUN_{run_number}"
         rpts = list(results_dir.glob("*.rpt"))
+        logging.info(f"Folder: {results_dir} - Found {len(rpts)} RPT files")
 
         for rpt_file in rpts:
             out_path = out_dir / f"#288.{run}" / f"RUN_{run_number}"
