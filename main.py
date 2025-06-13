@@ -42,7 +42,7 @@ if __name__ == "__main__":
     logger.info("Starting MPF reduction process")
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        executor.map(process_rpt_file, all_tasks[:1])
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(process_rpt_file, all_tasks)
 
     logger.info("MPF reduction process completed")
