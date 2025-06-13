@@ -1,9 +1,9 @@
 import pandas as pd # noqa
 import time
 import shutil
-from datetime import datetime
 from pathlib import Path
 from src.io import read_rpt
+from src.logger import logger
 
 run_numbers = ["179", "250"]
 runs_of_interest = ["301", "302", "303", "304", "305", "306", "307", "308", "311", "312", "313", "314", "315"] # noqa
@@ -64,11 +64,6 @@ out_dir = Path("./out")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 
-# create a tmp dir to copy the file to
-local_temp_dir = Path("C:/Temp/MPF_Files")
-local_temp_dir.mkdir(parents=True, exist_ok=True)
-
-
 def process_rpt_file(args):
     rpt_file, run, run_number, out_dir, local_temp_dir, vars_to_keep = args
     local_copy = local_temp_dir / rpt_file.name
@@ -77,31 +72,34 @@ def process_rpt_file(args):
         out_file = out_path / f"{rpt_file.stem}.csv"
 
         if out_file.exists():
-            print(f"{rpt_file} already exists. skipping...\n")
+            logger.info(f"{rpt_file} already exists. skipping...")
             return
 
         out_path.mkdir(parents=True, exist_ok=True)
 
+        logger.info(f"Copying {rpt_file} to {local_copy}")
         shutil.copy2(rpt_file, local_copy)
 
         start = time.perf_counter()
+        logger.info(f"Reading {local_copy}")
         df = read_rpt(local_copy)
         end = time.perf_counter()
 
         output_columns = [col for col in vars_to_keep if col in df.columns]
+        logger.info(f"Writing {out_file}")
         df[output_columns].to_csv(out_file, index=False)
 
-        print(f"{datetime.now()} processed {rpt_file.name} in {end - start:.2f}s") # noqa
+        logger.info(f"Processed {rpt_file.name} in {end - start:.2f}s")
 
     except Exception as e:
-        print(f"Error with {rpt_file}: {e}")
+        logger.error(f"Error with {rpt_file}: {e}")
     finally:
         if local_copy.exists():
             local_copy.unlink()
 
 
 all_tasks = []
-local_temp_dir = Path("C:/Temp/VPN_Files")
+local_temp_dir = Path("C:/Temp/MPF_Files")
 local_temp_dir.mkdir(parents=True, exist_ok=True)
 
 for run in runs_of_interest:
@@ -111,14 +109,19 @@ for run in runs_of_interest:
         rpts = list(results_dir.glob("*.rpt"))
 
         for rpt_file in rpts:
-            all_tasks.append((rpt_file,
-                              run, run_number,
-                              out_dir,
-                              local_temp_dir,
-                              vars_to_keep))
+            all_tasks.append((
+                rpt_file,
+                run,
+                run_number,
+                out_dir,
+                local_temp_dir,
+                vars_to_keep
+            ))
 
 
 if __name__ == "__main__":
+    logger.info("Starting MPF reduction process")
     from concurrent.futures import ProcessPoolExecutor
     with ProcessPoolExecutor(max_workers=4) as executor:
         executor.map(process_rpt_file, all_tasks)
+    logger.info("MPF reduction process completed")
