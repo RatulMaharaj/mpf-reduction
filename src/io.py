@@ -3,6 +3,9 @@ import csv
 from io import StringIO
 from pathlib import Path
 from typing import List
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def textfile_to_filtered_str_list(
@@ -95,7 +98,7 @@ def read_rpt(
     -------
     pd.DataFrame | pd.io.parsers.TextFileReader
         Returns either a pandas DataFrame object or a TextFileReader for chunked reading
-    """
+    """  # noqa
     str_list = textfile_to_filtered_str_list(
         file_path, header_prefix, entries_prefix, sep
     )  # reads header (!) and entries (*) only
@@ -105,7 +108,7 @@ def read_rpt(
     )  # converts list of strings to string_IO needed by pd.read_csv
 
     if chunksize is None:
-        df = pd.read_csv(str_io, sep=sep, **csv_args).drop(header_prefix, axis=1)
+        df = pd.read_csv(str_io, sep=sep, **csv_args).drop(header_prefix, axis=1)  # noqa
         return df
     else:
         return pd.read_csv(str_io, sep=sep, chunksize=chunksize, **csv_args)
@@ -154,9 +157,15 @@ class PredictableAccessor:
             return df
 
 
-def write_chunked_csv(df_chunk: pd.DataFrame, output_columns: list[str], out_file: Path, mode: str = 'w', header: bool = True):
+def write_chunked_csv(
+    df_chunk: pd.DataFrame,
+    output_columns: list[str],
+    out_file: Path,
+    mode: str = "w",
+    header: bool = True,
+):  # noqa
     """Write a chunk of data to a CSV file.
-    
+
     Parameters
     ----------
     df_chunk : pd.DataFrame
@@ -170,4 +179,98 @@ def write_chunked_csv(df_chunk: pd.DataFrame, output_columns: list[str], out_fil
     header : bool, optional
         Whether to write header, by default True
     """
-    df_chunk[output_columns].to_csv(out_file, mode=mode, header=header, index=False)
+    # Select only the columns we want
+    df_to_write = df_chunk[output_columns]
+
+    # Write to CSV with specific settings to prevent triple quoting
+    df_to_write.to_csv(
+        out_file,
+        mode=mode,
+        header=header,
+        index=False,
+        quoting=csv.QUOTE_MINIMAL,  # Only quote when necessary
+        escapechar="\\",  # Use backslash as escape character
+    )
+
+
+def stream_rpt_file(file_path: str | Path, chunk_size: int = 10_000):
+    """Stream process an RPT file line by line and yield chunks of data.
+
+    Parameters
+    ----------
+    file_path : str | Path
+        Path to the RPT file
+    chunk_size : int, optional
+        Number of lines to process in each chunk, by default 10000
+
+    Yields
+    ------
+    pd.DataFrame
+        Chunks of data as pandas DataFrames
+    """
+    header = None
+    chunk = []
+    count = 0
+    total_rows = 0
+
+    try:
+        with open(file_path, "r") as file:
+            for line_num, line in enumerate(file, 1):
+                if not line.strip():
+                    continue
+
+                try:
+                    parts = line.strip().split(",")
+
+                    # Process header
+                    if parts[0] == "!":
+                        # Remove any quotes from header
+                        header = [col.strip('"') for col in parts[1:]]
+                        msg = f"Found header with {len(header)} columns: {header}"  # noqa
+                        logger.info(msg)
+                        continue
+
+                    # Process data rows
+                    if parts[0] == "*":
+                        if len(parts[1:]) != len(header):
+                            msg = (
+                                f"Line {line_num}: Row has {len(parts[1:])} "
+                                f"columns but header has {len(header)} columns"
+                            )
+                            logger.warning(msg)
+                            continue
+
+                        # Clean up the data values
+                        cleaned_parts = [val.strip('"') for val in parts[1:]]
+                        chunk.append(cleaned_parts)
+                        count += 1
+                        total_rows += 1
+
+                        # Yield chunk when it reaches the desired size
+                        if count >= chunk_size:
+                            df = pd.DataFrame(chunk, columns=header)
+                            msg = (
+                                f"Yielding chunk of {len(df)} rows "
+                                f"(total processed: {total_rows})"
+                            )
+                            logger.info(msg)
+                            yield df
+                            chunk = []
+                            count = 0
+                except Exception as e:
+                    logger.error(f"Error processing line {line_num}: {str(e)}")
+                    continue
+
+        # Yield any remaining data
+        if chunk:
+            df = pd.DataFrame(chunk, columns=header)
+            msg = (
+                f"Yielding final chunk of {len(df)} rows "
+                f"(total processed: {total_rows})"
+            )
+            logger.info(msg)
+            yield df
+
+    except Exception as e:
+        logger.error(f"Error in stream_rpt_file {file_path}: {str(e)}")
+        raise

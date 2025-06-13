@@ -2,6 +2,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 import sys
+from datetime import datetime
 
 
 def setup_logger(name: str = "mpf_reduction") -> logging.Logger:
@@ -18,24 +19,22 @@ def setup_logger(name: str = "mpf_reduction") -> logging.Logger:
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
+    # Create timestamp for unique log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"mpf_reduction_{timestamp}.log"
+
     # Create logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
     # Create formatters
     file_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    console_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s'
-    )
+    console_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")  # noqa
 
-    # File handler (with rotation)
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / "mpf_reduction.log",
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
+    # File handler (without rotation since we want a new file each run)
+    file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(file_formatter)
 
