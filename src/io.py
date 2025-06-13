@@ -70,9 +70,10 @@ def read_rpt(
     header_prefix="!",
     entries_prefix="*",
     sep=",",
+    chunksize: int | None = None,
     **csv_args,
-) -> pd.DataFrame:
-    """Read a .rpt file into a pandas DataFrame.
+) -> pd.DataFrame | pd.io.parsers.TextFileReader:
+    """Read a .rpt file into a pandas DataFrame or TextFileReader for chunked reading.
 
     This is a special text file format where the header row begins with a "!"
     and each data row begins with a "*".
@@ -87,11 +88,13 @@ def read_rpt(
         Entry marker, by default "*"
     sep: str
         Delimiter to use
+    chunksize : int | None, optional
+        Number of rows to read at a time. If None, reads entire file at once.
 
     Returns
     -------
-    pd.DataFrame
-        Returns a pandas DataFrame object
+    pd.DataFrame | pd.io.parsers.TextFileReader
+        Returns either a pandas DataFrame object or a TextFileReader for chunked reading
     """
     str_list = textfile_to_filtered_str_list(
         file_path, header_prefix, entries_prefix, sep
@@ -101,8 +104,11 @@ def read_rpt(
         str_list
     )  # converts list of strings to string_IO needed by pd.read_csv
 
-    df = pd.read_csv(str_io, sep=sep, **csv_args).drop(header_prefix, axis=1)
-    return df
+    if chunksize is None:
+        df = pd.read_csv(str_io, sep=sep, **csv_args).drop(header_prefix, axis=1)
+        return df
+    else:
+        return pd.read_csv(str_io, sep=sep, chunksize=chunksize, **csv_args)
 
 
 def textfile_to_str_list(file_path):
@@ -146,3 +152,22 @@ class PredictableAccessor:
             return df.to_csv(file_name, index=False, quoting=csv.QUOTE_NONE)
         else:
             return df
+
+
+def write_chunked_csv(df_chunk: pd.DataFrame, output_columns: list[str], out_file: Path, mode: str = 'w', header: bool = True):
+    """Write a chunk of data to a CSV file.
+    
+    Parameters
+    ----------
+    df_chunk : pd.DataFrame
+        Chunk of data to write
+    output_columns : list[str]
+        List of columns to write
+    out_file : Path
+        Path to output file
+    mode : str, optional
+        File write mode, by default 'w'
+    header : bool, optional
+        Whether to write header, by default True
+    """
+    df_chunk[output_columns].to_csv(out_file, mode=mode, header=header, index=False)

@@ -2,8 +2,13 @@ import pandas as pd # noqa
 import time
 import shutil
 from pathlib import Path
-from src.io import read_rpt
+from src.io import read_rpt, write_chunked_csv
 from src.logger import logger
+
+input_dir = Path(R"\\OMRPRTP05.za.omlac.net\DEVELOPMENT\PE_Results\Segments\MFC RSA\2024-12\Mass Risk\Full") # noqa
+local_temp_dir = Path(R"C:\Temp\MPF_Files")
+out_dir = Path(R"out")
+use_local_copy = True
 
 run_numbers = ["179", "250"]
 runs_of_interest = ["301", "302", "303", "304", "305", "306", "307", "308", "311", "312", "313", "314", "315"] # noqa
@@ -60,7 +65,6 @@ vars_to_keep = [
 ]
 
 # create an output dir
-out_dir = Path("./out")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -77,18 +81,43 @@ def process_rpt_file(args):
 
         out_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Copying {rpt_file} to {local_copy}")
-        shutil.copy2(rpt_file, local_copy)
+        if use_local_copy:
+            logger.info(f"Copying {rpt_file} to {local_copy}")
+            shutil.copy2(rpt_file, local_copy)
 
         start = time.perf_counter()
-        logger.info(f"Reading {local_copy}")
-        df = read_rpt(local_copy)
+        if use_local_copy:
+            logger.info(f"Reading {local_copy}")
+        else:
+            logger.info(f"Reading {rpt_file}")
+
+        # Read and process in chunks
+        chunk_size = 10000  # Adjust this based on your memory constraints
+        output_columns = None  # Will be set after reading first chunk
+
+        for i, chunk in enumerate(read_rpt(local_copy if use_local_copy else rpt_file, chunksize=chunk_size)): # noqa
+            # Drop the header prefix column from the first chunk
+            if i == 0:
+                chunk = chunk.drop("!", axis=1)
+                # Get intersection of available columns and vars_to_keep
+                output_columns = [
+                    col for col in vars_to_keep if col in chunk.columns
+                ]
+
+            # Write chunk to file
+            mode = 'w' if i == 0 else 'a'
+            header = i == 0
+            write_chunked_csv(
+                chunk,
+                output_columns,
+                out_file,
+                mode=mode,
+                header=header
+            )
+
+            logger.info(f"Processed chunk {i+1} of {rpt_file.name}")
+
         end = time.perf_counter()
-
-        output_columns = [col for col in vars_to_keep if col in df.columns]
-        logger.info(f"Writing {out_file}")
-        df[output_columns].to_csv(out_file, index=False)
-
         logger.info(f"Processed {rpt_file.name} in {end - start:.2f}s")
 
     except Exception as e:
@@ -99,13 +128,11 @@ def process_rpt_file(args):
 
 
 all_tasks = []
-local_temp_dir = Path("C:/Temp/MPF_Files")
 local_temp_dir.mkdir(parents=True, exist_ok=True)
 
 for run in runs_of_interest:
-    results_path = Path(rf"\\omrprtp05\DEVELOPMENT\PE_Results\Segments\MFC RSA\2024-12\Mass Risk\Full\#288.{run}") # noqa
     for run_number in run_numbers:
-        results_dir = results_path / f"RUN_{run_number}"
+        results_dir = input_dir / f"#288.{run}" / f"RUN_{run_number}"
         rpts = list(results_dir.glob("*.rpt"))
 
         for rpt_file in rpts:
@@ -121,7 +148,7 @@ for run in runs_of_interest:
 
 if __name__ == "__main__":
     logger.info("Starting MPF reduction process")
-    from concurrent.futures import ProcessPoolExecutor
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as executor:
         executor.map(process_rpt_file, all_tasks)
     logger.info("MPF reduction process completed")
