@@ -1,7 +1,7 @@
 import time
 import shutil
 from src.io import write_chunked_csv, stream_rpt_file
-from src.config import use_local_copy
+from src.config import use_local_copy, is_omp
 from src.logger import logger
 
 
@@ -19,8 +19,10 @@ def process_rpt_file(args):
         out_path.mkdir(parents=True, exist_ok=True)
 
         if use_local_copy:
-            logger.info(f"Copying {rpt_file} to {local_copy}")
-            shutil.copy2(rpt_file, local_copy)
+            # check if the file has already been copied
+            if not local_copy.exists():
+                logger.info(f"Copying {rpt_file} to {local_copy}")
+                shutil.copy2(rpt_file, local_copy)
 
         start = time.perf_counter()
         if use_local_copy:
@@ -40,22 +42,23 @@ def process_rpt_file(args):
             logger.info(msg)
 
             # chunk level manipulations
-            # split IFRS17_CONTRACT_ID into 3 columns
-            # 69410S705341618_1_477 -> 69410S705341618, 1, 477
-            split_contract = chunk["IFRS17_CONTRACT_ID"].str.split("_", expand=True)  # noqa
-            chunk["POLICY_NUMBER"] = split_contract[0]
-            chunk["SEQUENCE_NUMBER"] = split_contract[1]
-            chunk["PLAN_CODE"] = split_contract[2]
+            if not is_omp:
+                # split IFRS17_CONTRACT_ID into 3 columns
+                # 69410S705341618_1_477 -> 69410S705341618, 1, 477
+                split_contract = chunk["IFRS17_CONTRACT_ID"].str.split("_", expand=True)  # noqa
+                chunk["POLICY_NUMBER"] = split_contract[0]
+                chunk["SEQUENCE_NUMBER"] = split_contract[1]
+                chunk["PLAN_CODE"] = split_contract[2]
 
-            # Log any rows with missing or malformed contract IDs
-            invalid_mask = chunk["IFRS17_CONTRACT_ID"].isna() | (
-                split_contract[2].isna()
-            )
-            invalid_contracts = chunk[invalid_mask]
-            if not invalid_contracts.empty:
-                logger.warning(
-                    f"Found {len(invalid_contracts)} rows with invalid contract IDs"  # noqa
+                # Log any rows with missing or malformed contract IDs
+                invalid_mask = chunk["IFRS17_CONTRACT_ID"].isna() | (
+                    split_contract[2].isna()
                 )
+                invalid_contracts = chunk[invalid_mask]
+                if not invalid_contracts.empty:
+                    logger.warning(
+                        f"Found {len(invalid_contracts)} rows with invalid contract IDs"  # noqa
+                    )
 
             # add a col for product code
             chunk["PRODUCT_CODE"] = rpt_file.stem
@@ -65,12 +68,16 @@ def process_rpt_file(args):
             if is_first_chunk:
                 # Get intersection of available columns and cols_to_keep
                 output_columns = [col for col in cols_to_keep if col in chunk.columns]  # noqa
-                output_columns = [
-                    "POLICY_NUMBER",
-                    "SEQUENCE_NUMBER",
-                    "PLAN_CODE",
-                    "PRODUCT_CODE",
-                ] + output_columns
+                if not is_omp:
+                    output_columns = [
+                        "POLICY_NUMBER",
+                        "SEQUENCE_NUMBER",
+                        "PLAN_CODE",
+                    ] + output_columns
+
+                # add product code
+                output_columns = ["PRODUCT_CODE"] + output_columns
+
                 logger.info(f"Selected {len(output_columns)} columns")
                 logger.info(f"Columns: {output_columns}")
 
