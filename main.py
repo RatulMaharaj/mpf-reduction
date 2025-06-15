@@ -6,6 +6,7 @@ from src.config import (
     out_dir,
     run_numbers,
     runs_of_interest,
+    is_omp,
 )
 from src.process import process_rpt_file
 
@@ -21,7 +22,14 @@ all_tasks = []
 
 for run in runs_of_interest:
     for run_number in run_numbers:
-        results_dir = input_dir / f"#288.{run}" / f"RUN_{run_number}"
+        if is_omp:
+            run_type = "NB" if run_number == "250" else "CLS"
+
+            results_dir = (
+                input_dir / f"#288.{run}" / run_type / run_number / f"RUN_{run_number}"  # noqa
+            )
+        else:
+            results_dir = input_dir / f"#288.{run}" / f"RUN_{run_number}"
         rpts = list(results_dir.glob("*.rpt"))
         logger.info(f"Folder: {results_dir} - Found {len(rpts)} RPT files")
 
