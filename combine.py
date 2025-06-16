@@ -111,5 +111,12 @@ if __name__ == "__main__":
             output_file = out_dir / f"combined_#288.{run}_RUN_{run_number}.csv"
             summary_file = out_dir / f"summary_#288.{run}_RUN_{run_number}.csv"
 
+            if output_file.exists():
+                # ask user to delete the file if they want to rerun
+                logger.warning(
+                    f"File {output_file} already combined. Skipping.."  # noqa
+                )
+                continue
+
             logger.info(f"Processing files for #288.{run}_RUN_{run_number}")
             combine_csv_files(run_dir, output_file, summary_file)
