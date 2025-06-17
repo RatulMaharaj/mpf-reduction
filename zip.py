@@ -11,10 +11,11 @@ for file in files:
     zip_file_name = f"{file.stem}.zip"
     zip_file_path = out_dir / zip_file_name
 
-    # Create a zip file with compression (ZIP_DEFLATED)
+    # Create a zip file with maximum compression
     with zipfile.ZipFile(
-        f"{zip_file_path}",
+        zip_file_path,
         "w",
         compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,  # Maximum compression level
     ) as zipf:
-        zipf.write(f"{zip_file_path}", file.name)
+        zipf.write(file, file.name)
